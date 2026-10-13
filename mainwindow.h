@@ -11,6 +11,7 @@ class QProgressBar;
 class QPlainTextEdit;
 class QTabWidget;
 class QLabel;
+class QComboBox;
 
 class MainWindow : public QMainWindow
 {
@@ -34,12 +35,14 @@ private:
     void log(const QString &text);
     static void setPercent(QProgressBar *bar, qint64 done, qint64 total);
     static QString localAddresses();
+    static void applyTheme(int mode);   // 0 = system, 1 = light, 2 = dark
 
     Discovery m_discovery;
     FileSender m_sender;
     FileReceiver m_receiver;
 
     QLineEdit *m_nameEdit;
+    QComboBox *m_themeBox;
     QTabWidget *m_tabs;
     QPlainTextEdit *m_log;
 

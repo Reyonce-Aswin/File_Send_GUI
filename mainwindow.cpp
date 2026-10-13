@@ -1,7 +1,12 @@
 #include "mainwindow.h"
 #include "common.h"
 
+#include <QApplication>
+#include <QComboBox>
 #include <QFileDialog>
+#include <QStyle>
+#include <QStyleHints>
+#include <QPalette>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QInputDialog>
@@ -36,6 +41,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     auto *saveBtn = new QPushButton(tr("Save"));
     nameRow->addWidget(m_nameEdit, 1);
     nameRow->addWidget(saveBtn);
+    nameRow->addSpacing(16);
+    nameRow->addWidget(new QLabel(tr("Theme:")));
+    m_themeBox = new QComboBox;
+    m_themeBox->addItems({tr("System"), tr("Light"), tr("Dark")});
+    nameRow->addWidget(m_themeBox);
 
     m_tabs = new QTabWidget;
     m_tabs->addTab(buildSendTab(), tr("Send"));
@@ -78,18 +88,27 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     // receiver
     connect(&m_receiver, &FileReceiver::transferStarted, this,
             [this](const QString &name, qint64 size, const QString &peer) {
-        m_recvBar->setValue(0);
-        m_recvStatus->setText(tr("Receiving %1 from %2").arg(name, peer));
-        log(tr("Incoming: %1 (%2 bytes) from %3").arg(name).arg(size).arg(peer));
-    });
+                m_recvBar->setValue(0);
+                m_recvStatus->setText(tr("Receiving %1 from %2").arg(name, peer));
+                log(tr("Incoming: %1 (%2 bytes) from %3").arg(name).arg(size).arg(peer));
+            });
     connect(&m_receiver, &FileReceiver::progress, this, [this](qint64 d, qint64 t) {
         setPercent(m_recvBar, d, t);
     });
     connect(&m_receiver, &FileReceiver::transferFinished, this,
             [this](bool ok, const QString &msg) {
-        m_recvStatus->setText(tr("Listening… waiting for files"));
-        if (ok) m_recvBar->setValue(100);
-        log(ok ? tr("Saved to %1").arg(msg) : tr("Receive failed: %1").arg(msg));
+                m_recvStatus->setText(tr("Listening… waiting for files"));
+                if (ok) m_recvBar->setValue(100);
+                log(ok ? tr("Saved to %1").arg(msg) : tr("Receive failed: %1").arg(msg));
+            });
+
+    // theme: restore saved choice, then react to changes
+    const int theme = qBound(0, QSettings().value("theme", 0).toInt(), 2);
+    m_themeBox->setCurrentIndex(theme);
+    applyTheme(theme);
+    connect(m_themeBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int i) {
+        QSettings().setValue("theme", i);
+        applyTheme(i);
     });
 
     loadDeviceName();
@@ -313,4 +332,50 @@ void MainWindow::addManualDevice()
     m_deviceList->addItem(item);
     m_deviceList->setCurrentItem(item);
     m_ipEdit->clear();
+}
+
+void MainWindow::applyTheme(int mode)
+{
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    // Windows / macOS: native color scheme support (Unknown = follow the OS)
+    const Qt::ColorScheme cs = mode == 1 ? Qt::ColorScheme::Light
+                               : mode == 2 ? Qt::ColorScheme::Dark
+                                           : Qt::ColorScheme::Unknown;
+    QGuiApplication::styleHints()->setColorScheme(cs);
+    return;
+#endif
+#endif
+
+    // Linux (including WSL) and older Qt: Fusion style + hand-made palette.
+    // "System" follows the desktop if Qt can detect it, otherwise light.
+    bool dark = (mode == 2);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+    if (mode == 0)
+        dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+#endif
+
+    qApp->setStyle(QStringLiteral("Fusion"));
+    if (dark) {
+        QPalette p;
+        p.setColor(QPalette::Window, QColor(45, 45, 45));
+        p.setColor(QPalette::WindowText, Qt::white);
+        p.setColor(QPalette::Base, QColor(30, 30, 30));
+        p.setColor(QPalette::AlternateBase, QColor(45, 45, 45));
+        p.setColor(QPalette::ToolTipBase, QColor(45, 45, 45));
+        p.setColor(QPalette::ToolTipText, Qt::white);
+        p.setColor(QPalette::Text, Qt::white);
+        p.setColor(QPalette::Button, QColor(53, 53, 53));
+        p.setColor(QPalette::ButtonText, Qt::white);
+        p.setColor(QPalette::BrightText, Qt::red);
+        p.setColor(QPalette::Highlight, QColor(42, 130, 218));
+        p.setColor(QPalette::HighlightedText, Qt::black);
+        p.setColor(QPalette::PlaceholderText, QColor(150, 150, 150));
+        p.setColor(QPalette::Disabled, QPalette::Text, QColor(127, 127, 127));
+        p.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(127, 127, 127));
+        p.setColor(QPalette::Disabled, QPalette::WindowText, QColor(127, 127, 127));
+        qApp->setPalette(p);
+    } else {
+        qApp->setPalette(qApp->style()->standardPalette());
+    }
 }
